@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="An evolving predator-prey artificial life simulation: foragers and predators move by inherited attraction genomes on a wrap-around lattice. Browser port of predator-prey-20.hs (1999).">
+<style>
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;font-size:14px}
+img{max-width:100%}
+[hidden]{display:none!important}
+</style>
+<title>Dynamic Attractions Lattice</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: instrument bench. Lattice "screen" on top, transport bar, live readouts, then grouped parameter drawers. */
+:root{
+  --bg:#eef1f4; --panel:#ffffff; --ink:#18212b; --muted:#5b6877; --line:#d5dbe2;
+  --screen:#14202e; --screen-grid:#1c2b3c;
+  --food:#5fae6a; --forager:#e8a33d; --pred:#e0564f; --empty:#8c99a8;
+  --accent:#2f6fb3; --accent-ink:#ffffff;
+  --f-display:"Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --f-body:"IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono:"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f151c; --panel:#161f29; --ink:#e4e9ef; --muted:#93a1b1; --line:#2a3644;
+  --screen:#0a1119; --screen-grid:#121c27;
+  --food:#6cc078; --forager:#f0b04f; --pred:#ef6a62; --empty:#6f7d8d;
+  --accent:#6aa5e6; --accent-ink:#0b1622; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0f151c; --panel:#161f29; --ink:#e4e9ef; --muted:#93a1b1; --line:#2a3644;
+  --screen:#0a1119; --screen-grid:#121c27;
+  --food:#6cc078; --forager:#f0b04f; --pred:#ef6a62; --empty:#6f7d8d;
+  --accent:#6aa5e6; --accent-ink:#0b1622; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 20px}
+h1{font-family:var(--f-display);font-weight:700;font-size:clamp(24px,3.4vw,34px);letter-spacing:-0.01em;margin:0;text-wrap:balance}
+.sub{color:var(--muted);font-size:13px;font-family:var(--f-mono)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:10px;height:10px;display:inline-block}
+.sw.S{background:var(--food);border-radius:2px}.sw.F{background:var(--forager);border-radius:50%}.sw.P{background:var(--pred);transform:rotate(45deg) scale(.85)}
+.screen{background:var(--screen);border-radius:10px;padding:10px;position:relative}
+#lattice{display:block;width:100%;height:auto;image-rendering:pixelated;cursor:crosshair;border-radius:4px}
+.transport{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+button{font:inherit;font-weight:500;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:7px;padding:7px 14px;cursor:pointer;min-height:38px}
+button:hover{border-color:var(--accent)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);min-width:92px}
+.speed{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.speed input{width:120px}
+.clock{margin-left:auto;font-family:var(--f-mono);font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.clock b{color:var(--ink);font-weight:500}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{font-family:var(--f-mono);font-size:13px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:var(--panel);font-variant-numeric:tabular-nums;display:inline-flex;gap:6px;align-items:center}
+.chip.dead{opacity:.55;text-decoration:line-through}
+.grid2{display:grid;grid-template-columns:1.4fr 1fr;gap:18px}
+@media (max-width:820px){.grid2{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;min-width:0}
+.card h2{font-family:var(--f-display);font-weight:500;font-size:16px;margin:0 0 4px}
+.card p.note{margin:0 0 10px;color:var(--muted);font-size:13px}
+canvas.chart{width:100%;display:block}
+.params{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+@media (max-width:900px){.params{grid-template-columns:1fr}}
+fieldset{border:1px solid var(--line);border-radius:10px;padding:12px 16px 14px;margin:0;background:var(--panel);min-width:0;display:flex;flex-direction:column;gap:10px}
+legend{font-family:var(--f-display);font-weight:500;font-size:15px;padding:0 6px}
+.row{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center}
+.row label{font-size:13.5px}
+.row output{font-family:var(--f-mono);font-size:13px;font-variant-numeric:tabular-nums;color:var(--ink);min-width:3.5ch;text-align:right}
+.row input[type=range]{grid-column:1/-1;width:100%;accent-color:var(--accent)}
+.row .hs{grid-column:1/-1;font-family:var(--f-mono);font-size:11.5px;color:var(--muted)}
+.tag{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:1px 5px;margin-left:6px;font-weight:500}
+.toggle{display:flex;align-items:center;gap:8px;font-size:13.5px}
+.presets{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.presets .lbl{font-size:13px;color:var(--muted)}
+select,input[type=number]{font:inherit;font-size:14px;padding:6px 8px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink)}
+input[type=number]{width:11ch;font-family:var(--f-mono)}
+.inspect{font-family:var(--f-mono);font-size:12.5px;display:flex;flex-direction:column;gap:8px}
+.inspect .org{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:center}
+.gbar{display:flex;height:10px;border-radius:3px;overflow:hidden;min-width:0}
+.gbar i{display:block;height:100%}
+.empty-state{color:var(--muted);font-family:var(--f-body);font-size:13px}
+.rules{font-size:13.5px;color:var(--muted);max-width:75ch}
+.rules ul{margin:6px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:3px}
+.rules code{font-family:var(--f-mono);font-size:12.5px;color:var(--ink)}
+.toast{font-size:12.5px;color:var(--muted);min-height:1.2em}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Dynamic Attractions Lattice</h1>
+      <div class="sub">predator-prey-20.hs · v2.0 · 02/03/99 · ported to the browser</div>
+    </div>
+    <div class="legend" aria-label="Legend">
+      <span><i class="sw S"></i>Sustenance (food)</span>
+      <span><i class="sw F"></i>Forager (prey)</span>
+      <span><i class="sw P"></i>Predator</span>
+      <span id="geneLegend" hidden>Colour = strongest pull to:
+        <i class="sw" style="background:var(--empty)"></i>empty
+        <i class="sw" style="background:var(--food)"></i>food
+        <i class="sw" style="background:var(--forager)"></i>foragers
+        <i class="sw" style="background:var(--pred)"></i>predators</span>
+    </div>
+  </header>
+
+  <div class="screen"><canvas id="lattice" aria-label="Lattice of organisms. Click a cell to inspect it."></canvas></div>
+
+  <div class="transport">
+    <button id="play" class="primary">Pause</button>
+    <button id="stepBtn">Step</button>
+    <button id="reset">Reset</button>
+    <button id="inject">Add 10 predators</button>
+    <label class="speed" for="speed">Speed <input id="speed" type="range" min="1" max="60" value="12"> <output id="speedOut">12/s</output></label>
+    <div class="chips" id="chips"></div>
+    <div class="clock">timestep <b id="tOut">0</b></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Population census</h2>
+      <p class="note">Counts per timestep, last 600 steps. Food is replanted at random wherever it is eaten.</p>
+      <canvas id="popChart" class="chart" height="220"></canvas>
+    </div>
+    <div class="card">
+      <h2>Evolving attractions</h2>
+      <p class="note">Mean genome per species: attraction to an empty cell, food, foragers and predators. Each genome sums to 1.</p>
+      <canvas id="genChart" class="chart" height="220"></canvas>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Phase plot</h2>
+      <p class="note">Predators against foragers, last 600 steps. The trail fades with age; counter-clockwise loops are predator-prey cycles.</p>
+      <canvas id="phaseChart" class="chart" height="300"></canvas>
+    </div>
+    <div class="card">
+      <h2>Genome scatter</h2>
+      <p class="note">Every living individual, two genes at a time. Genes sum to 1, so points stay inside the shaded triangle. The ring marks the population mean.</p>
+      <div class="presets" style="margin-bottom:8px">
+        <label class="toggle" for="scSpecies">Species <select id="scSpecies"><option value="F">Foragers</option><option value="P">Predators</option></select></label>
+        <label class="toggle" for="scX">x <select id="scX"><option value="0">Empty cell</option><option value="1" selected>Food</option><option value="2">Foragers</option><option value="3">Predators</option></select></label>
+        <label class="toggle" for="scY">y <select id="scY"><option value="0">Empty cell</option><option value="1">Food</option><option value="2">Foragers</option><option value="3" selected>Predators</option></select></label>
+      </div>
+      <canvas id="scatter" class="chart" height="280"></canvas>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Cell inspector</h2>
+      <p class="note">Click any cell on the lattice to see who is standing there.</p>
+      <div id="inspect" class="inspect"><div class="empty-state">No cell selected yet.</div></div>
+    </div>
+    <div class="card">
+      <h2>Census export</h2>
+      <p class="note">The original wrote Excel-friendly census rows. This copies <code>Timestep,Food,Foragers,Predators</code> for the whole run.</p>
+      <div class="presets"><button id="copyCsv">Copy census CSV</button><span class="toast" id="toast"></span></div>
+      <textarea id="csvFallback" hidden readonly rows="4" style="width:100%;margin-top:8px;font-family:var(--f-mono);font-size:12px"></textarea>
+    </div>
+  </div>
+
+  <div class="presets">
+    <span class="lbl">Preset</span>
+    <select id="preset">
+      <option value="osc">Oscillating cycles</option>
+      <option value="orig">Original 1999 constants</option>
+      <option value="origfed">1999 constants, rebalanced energy</option>
+      <option value="crowd">Crowded lattice</option>
+    </select>
+    <label class="toggle" for="seed">Seed <input id="seed" type="number" min="0" max="999999" value="20031999"></label>
+    <button id="reseed">New seed</button>
+    <label class="toggle" for="moveMode">Movement <select id="moveMode"><option value="max">Max attraction (as coded)</option><option value="roulette">Roulette wheel (as commented)</option></select></label>
+    <label class="toggle" for="colourBy">Colour <select id="colourBy"><option value="species">By species</option><option value="genome">By strongest gene</option></select></label>
+  </div>
+
+  <div class="params" id="params"></div>
+
+  <div class="card rules">
+    <h2>Rules, as in the Haskell</h2>
+    <ul>
+      <li>Each forager and predator looks at its own cell and its 8 Moore neighbours on a wrap-around lattice. A cell's appeal is its <code>blank</code> gene if empty, otherwise the lowest gene among the species there. It moves to the most attractive cell, breaking ties at random. The header comment describes a roulette wheel over the neighbourhood instead; the Movement menu switches between the two.</li>
+      <li>Predators sharing a cell with foragers eat them all; a random predator gets each kill. Foragers on food (with no predator) eat it. Food is passive.</li>
+      <li>Every step costs energy; an organism already at zero energy is removed. Anything at or above the mating energy breeds: it pays the birth cost, and an equal number of offspring are drawn by energy-weighted roulette.</li>
+      <li>Offspring are born on the parent's cell. With probability <code>pc</code> a pair blend their genomes at a random point between them; with probability <code>pm</code> a genome is pulled halfway toward a pure attraction vertex or the centre.</li>
+    </ul>
+  </div>
+</div>
+<script>
+// Faithful port of predator-prey-20.hs (v2.0, 02/03/99) step function.
+// Organism: {x,y,s:'S'|'F'|'P',age,e,att:[blank,food,forager,predator],eaten:[]}
+function makeSim(P, rng) {
+  rng = rng || Math.random;
+  const ri = n => Math.floor(rng() * n);
+  const W = P.cols, H = P.rows;
+  let orgs = [], t = 0, nextId = 1;
+
+  function randAtts() {
+    const a = [ri(1001), ri(1001), ri(1001), ri(1001)];
+    let s = a[0] + a[1] + a[2] + a[3]; if (s === 0) { a[0] = 1; s = 1; }
+    return a.map(v => v / s);
+  }
+  function create(s, x, y) {
+    return { id: nextId++, x, y, s, age: 0, e: P.initE, att: s === 'S' ? null : randAtts(), eaten: 0, gen: 0 };
+  }
+  function initPop(nS, nF, nP) {
+    const out = [];
+    for (let i = 0; i < nS; i++) out.push(create('S', ri(W), ri(H)));
+    for (let i = 0; i < nF; i++) out.push(create('F', ri(W), ri(H)));
+    for (let i = 0; i < nP; i++) out.push(create('P', ri(W), ri(H)));
+    return out;
+  }
+  orgs = initPop(P.nS, P.nF, P.nP);
+
+  const DX = [0, 0, 1, 1, 1, 0, -1, -1, -1], DY = [0, -1, -1, 0, 1, 1, 1, 0, -1];
+  const SI = { S: 1, F: 2, P: 3 };
+
+  function bucket(list) {
+    const g = new Map();
+    for (const o of list) { const k = o.y * W + o.x; let b = g.get(k); if (!b) g.set(k, b = []); b.push(o); }
+    return g;
+  }
+
+  // applyRules: choose among own cell + Moore neighbourhood the cell(s) of max attraction
+  function move(o, grid) {
+    if (o.s === 'S') return { ...o };
+    let best = -Infinity, cands = [], cells = [];
+    for (let k = 0; k < 9; k++) {
+      const nx = (o.x + DX[k] + W) % W, ny = (o.y + DY[k] + H) % H;
+      const b = grid.get(ny * W + nx);
+      let a;
+      if (!b || b.length === 0) a = o.att[0];
+      else { a = Infinity; for (const q of b) a = Math.min(a, o.att[SI[q.s]]); }
+      cells.push([nx, ny, a]);
+      if (a > best) { best = a; cands = [[nx, ny]]; } else if (a === best) cands.push([nx, ny]);
+    }
+    if (P.moveMode === 'roulette') { let tot = 0; for (const c of cells) tot += c[2]; if (tot > 0) { let r = rng() * tot; for (const c of cells) { r -= c[2]; if (r < 0) return { ...o, x: c[0], y: c[1] }; } } }
+    const [x, y] = cands[ri(cands.length)];
+    return { ...o, x, y };
+  }
+
+  function consume(eaters, prey, inc) {
+    for (const p of prey) { const o = eaters[ri(eaters.length)]; o.e += inc; o.eaten++; }
+  }
+
+  function resolve(list) {
+    const out = [];
+    for (const cell of bucket(list).values()) {
+      const pls = [], fls = [], sls = [];
+      for (const o of cell) (o.s === 'P' ? pls : o.s === 'F' ? fls : sls).push(o);
+      if (pls.length && fls.length) { consume(pls, fls, P.incEP); out.push(...pls, ...sls); }
+      else if (fls.length && sls.length) { consume(fls, sls, P.incEF); out.push(...fls); }
+      else out.push(...pls, ...fls, ...sls);
+    }
+    return out;
+  }
+
+  function roulette(fit, tot) {
+    const spin = ri(tot + 1); let acc = 0;
+    for (let i = 0; i < fit.length; i++) { if (!(spin > acc + fit[i])) return i; acc += fit[i]; }
+    return fit.length - 1;
+  }
+  const MUT = [[0, 0, 0, 1], [0, 0, 1, 0], [0, 1, 0, 0], [1, 0, 0, 0], [0.25, 0.25, 0.25, 0.25]];
+  function mutate(a) { const v = MUT[ri(MUT.length)]; return a.map((x, i) => (x + v[i]) * 0.5); }
+
+  // evolve: parents pay birthE; produce equal number of offspring by roulette on energy
+  function evolve(ls) {
+    if (!ls.length) return [];
+    const fit = ls.map(o => Math.max(0, o.e)), tot = fit.reduce((a, b) => a + b, 0);
+    const kids = []; let n = ls.length;
+    while (n > 0) {
+      if (n === 1) {
+        const p = ls[roulette(fit, tot)]; let a = p.att;
+        if (ri(101) <= P.pm) a = mutate(a);
+        kids.push(child(p, a)); n--;
+      } else {
+        const p1 = ls[roulette(fit, tot)], p2 = ls[roulette(fit, tot)];
+        let a1 = p1.att, a2 = p2.att;
+        if (ri(101) <= P.pc) {
+          const d = ri(101) / 100;
+          const b1 = a1.map((x, i) => d * a2[i] + (1 - d) * x), b2 = a2.map((x, i) => d * a1[i] + (1 - d) * x);
+          a1 = b1; a2 = b2;
+        }
+        if (ri(101) <= P.pm) a1 = mutate(a1);
+        if (ri(101) <= P.pm) a2 = mutate(a2);
+        kids.push(child(p1, a1), child(p2, a2)); n -= 2;
+      }
+    }
+    for (const o of ls) o.e -= P.birthE;
+    return kids;
+  }
+  function child(p, a) { return { id: nextId++, x: p.x, y: p.y, s: p.s, age: 0, e: P.initE, att: a, eaten: 0, gen: p.gen + 1 }; }
+
+  function step() {
+    const grid = bucket(orgs);
+    const moved = orgs.map(o => move(o, grid));
+    const res = resolve(moved);
+    const foodBefore = orgs.reduce((c, o) => c + (o.s === 'S'), 0);
+    const food = res.filter(o => o.s === 'S');
+    const rePop = P.regrow ? initPop(foodBefore - food.length, 0, 0) : [];
+    const aged = [];
+    for (const o of res) {
+      if (o.s === 'P' && o.e > 0) aged.push({ ...o, age: o.age + 1, e: o.e - P.decEP });
+      else if (o.s === 'F' && o.e > 0) aged.push({ ...o, age: o.age + 1, e: o.e - P.decEF });
+    }
+    aged.push(...food);
+    const mF = [], mP = [], rest = [];
+    for (const o of aged) {
+      if (o.s === 'F' && o.age >= P.mAF && o.e >= P.mEF) mF.push(o);
+      else if (o.s === 'P' && o.age >= P.mAP && o.e >= P.mEP) mP.push(o);
+      else rest.push(o);
+    }
+    const kP = evolve(mP), kF = evolve(mF);
+    orgs = [...mP, ...kP, ...mF, ...kF, ...rest, ...rePop];
+    t++;
+    return { births: kP.length + kF.length };
+  }
+
+  function census() {
+    const c = { S: 0, F: 0, P: 0 }, att = { F: [0, 0, 0, 0], P: [0, 0, 0, 0] };
+    for (const o of orgs) { c[o.s]++; if (o.att) for (let i = 0; i < 4; i++) att[o.s][i] += o.att[i]; }
+    for (const s of ['F', 'P']) if (c[s]) att[s] = att[s].map(v => v / c[s]);
+    return { t, ...c, att };
+  }
+  function inject(s, n) { orgs = orgs.concat(initPop(0, s === 'F' ? n : 0, s === 'P' ? n : 0)); }
+  return { step, census, inject, W, H, get orgs() { return orgs; }, get t() { return t; } };
+}
+
+const PARAMS = [
+  { g: 'World', tag: 'on reset', items: [
+    ['cols', 'Columns', 20, 160, 1], ['rows', 'Rows', 10, 80, 1],
+    ['nS', 'Food', 0, 2000, 10], ['nF', 'Foragers', 0, 1000, 5], ['nP', 'Predators', 0, 500, 5],
+    ['initE', 'Starting energy', 1, 60, 1, 'initE'],
+  ], toggle: ['regrow', 'Replant eaten food'] },
+  { g: 'Energy', tag: 'live', note: 'Predators need foragers to thrive first. Raising predator gain alone rarely saves them; raise forager gain too.', items: [
+    ['incEF', 'Forager gain per food', 0, 30, 1, 'incEF'], ['decEF', 'Forager cost per step', 0, 5, 1, 'decEF'],
+    ['incEP', 'Predator gain per forager', 0, 40, 1, 'incEP'], ['decEP', 'Predator cost per step', 0, 5, 1, 'decEP'],
+  ] },
+  { g: 'Breeding & GA', tag: 'live', items: [
+    ['mEF', 'Forager mating energy', 1, 60, 1, 'mEF'], ['mEP', 'Predator mating energy', 1, 60, 1, 'mEP'],
+    ['mAF', 'Forager mating age', 0, 50, 1, 'mAF'], ['mAP', 'Predator mating age', 0, 50, 1, 'mAP'],
+    ['birthE', 'Energy spent giving birth', 0, 60, 1, 'birthE'],
+    ['pc', 'Crossover probability %', 0, 100, 1, 'pc'], ['pm', 'Mutation probability %', 0, 100, 1, 'pm'],
+  ] },
+];
+const PRESETS = {
+  orig:  { cols: 80, rows: 25, nS: 300, nF: 120, nP: 30, initE: 16, decEF: 1, incEF: 3, decEP: 1, incEP: 3, mAF: 0, mEF: 16, mAP: 0, mEP: 16, birthE: 16, pc: 25, pm: 1, regrow: true },
+  origfed: { cols: 80, rows: 25, nS: 300, nF: 120, nP: 30, initE: 16, decEF: 1, incEF: 6, decEP: 1, incEP: 8, mAF: 0, mEF: 16, mAP: 0, mEP: 16, birthE: 16, pc: 25, pm: 1, regrow: true },
+  osc:   { cols: 80, rows: 25, nS: 500, nF: 120, nP: 30, initE: 16, decEF: 1, incEF: 6, decEP: 1, incEP: 10, mAF: 0, mEF: 16, mAP: 0, mEP: 20, birthE: 16, pc: 25, pm: 1, regrow: true },
+  crowd: { cols: 120, rows: 40, nS: 1400, nF: 400, nP: 60, initE: 16, decEF: 1, incEF: 5, decEP: 1, incEP: 12, mAF: 0, mEF: 20, mAP: 0, mEP: 24, birthE: 16, pc: 25, pm: 3, regrow: true },
+};
+const P = { ...PRESETS.osc };
+P.moveMode = 'max'; P.colourBy = 'species';
+const argmax = a => { let b = 0; for (let i = 1; i < a.length; i++) if (a[i] > a[b]) b = i; return b; };
+
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let sim, hist, running = true, acc = 0, last = performance.now(), selected = null;
+
+// ---------- parameter UI ----------
+const paramsEl = $('params');
+for (const grp of PARAMS) {
+  const fs = document.createElement('fieldset');
+  fs.innerHTML = `<legend>${grp.g}<span class="tag">${grp.tag === 'live' ? 'applies live' : 'applies on reset'}</span></legend>` + (grp.note ? `<p style="margin:0;font-size:12.5px;color:var(--muted)">${grp.note}</p>` : '');
+  for (const [k, label, min, max, st, hs] of grp.items) {
+    const row = document.createElement('div'); row.className = 'row';
+    row.innerHTML = `<label for="p_${k}">${label}</label><output id="o_${k}"></output>
+      <input type="range" id="p_${k}" min="${min}" max="${max}" step="${st}">${hs ? `<span class="hs">${hs}</span>` : ''}`;
+    fs.appendChild(row);
+    const inp = row.querySelector('input');
+    inp.addEventListener('input', () => { P[k] = +inp.value; $('o_' + k).textContent = inp.value; });
+  }
+  if (grp.toggle) {
+    const [k, label] = grp.toggle; const l = document.createElement('label'); l.className = 'toggle'; l.htmlFor = 'p_' + k;
+    l.innerHTML = `<input type="checkbox" id="p_${k}"> ${label} <span class="hs" style="font-family:var(--f-mono);font-size:11.5px;color:var(--muted)">rePop</span>`;
+    fs.appendChild(l);
+    l.querySelector('input').addEventListener('change', e => { P[k] = e.target.checked; });
+  }
+  paramsEl.appendChild(fs);
+}
+function syncUI() {
+  for (const grp of PARAMS) {
+    for (const [k] of grp.items) { $('p_' + k).value = P[k]; $('o_' + k).textContent = P[k]; }
+    if (grp.toggle) $('p_' + grp.toggle[0]).checked = P[grp.toggle[0]];
+  }
+}
+
+// ---------- simulation lifecycle ----------
+function reset() {
+  sim = makeSim(P, mulberry32(+$('seed').value || 1));
+  hist = [sim.census()];
+  selected = null; renderInspect();
+  sizeLattice(); drawAll();
+}
+$('reset').onclick = reset;
+$('reseed').onclick = () => { $('seed').value = Math.floor(Math.random() * 1e6); reset(); };
+$('preset').onchange = e => { Object.assign(P, PRESETS[e.target.value]); syncUI(); reset(); };
+$('play').onclick = () => { running = !running; $('play').textContent = running ? 'Pause' : 'Play'; };
+$('stepBtn').onclick = () => { running = false; $('play').textContent = 'Play'; doStep(); drawAll(); };
+$('speed').oninput = e => { $('speedOut').textContent = e.target.value + '/s'; };
+$('inject').onclick = () => { sim.inject('P', 10); hist[hist.length - 1] = sim.census(); drawAll(); };
+
+function doStep() {
+  sim.step(); hist.push(sim.census());
+  if (selected) renderInspect();
+}
+function loop(now) {
+  const dt = Math.min(250, now - last); last = now;
+  if (running) {
+    acc += dt * (+$('speed').value) / 1000;
+    let n = 0;
+    while (acc >= 1 && n < 30) { doStep(); acc -= 1; n++; }
+    if (n) drawAll();
+  }
+  requestAnimationFrame(loop);
+}
+
+// ---------- drawing ----------
+const lat = $('lattice'), lctx = lat.getContext('2d');
+let cell = 8;
+function sizeLattice() {
+  const w = lat.parentElement.clientWidth - 20;
+  cell = Math.max(3, Math.floor(w / P._cols()));
+  const dpr = window.devicePixelRatio || 1;
+  lat.width = P._cols() * cell * dpr; lat.height = P._rows() * cell * dpr;
+  lat.style.width = (P._cols() * cell) + 'px'; lat.style.height = (P._rows() * cell) + 'px';
+  lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+P._cols = () => sim ? sim.W : P.cols; P._rows = () => sim ? sim.H : P.rows;
+
+function drawLattice() {
+  const W = sim.W, H = sim.H, c = cell;
+  const col = { S: css('--food'), F: css('--forager'), P: css('--pred') };
+  const geneCol = [css('--empty'), css('--food'), css('--forager'), css('--pred')];
+  lctx.fillStyle = css('--screen'); lctx.fillRect(0, 0, W * c, H * c);
+  if (c >= 6) {
+    lctx.strokeStyle = css('--screen-grid'); lctx.lineWidth = 1; lctx.beginPath();
+    for (let x = 1; x < W; x++) { lctx.moveTo(x * c + .5, 0); lctx.lineTo(x * c + .5, H * c); }
+    for (let y = 1; y < H; y++) { lctx.moveTo(0, y * c + .5); lctx.lineTo(W * c, y * c + .5); }
+    lctx.stroke();
+  }
+  const top = new Map(); const rank = { S: 0, F: 1, P: 2 };
+  for (const o of sim.orgs) {
+    const k = o.y * W + o.x, cur = top.get(k);
+    if (!cur) top.set(k, { o, n: 1, food: o.s === 'S' });
+    else { cur.n++; if (o.s === 'S') cur.food = true; if (rank[o.s] > rank[cur.o.s]) cur.o = o; }
+  }
+  for (const { o, n, food } of top.values()) {
+    const x = o.x * c, y = o.y * c, m = c / 2;
+    if (o.s === 'S') { lctx.fillStyle = col.S; const s = Math.max(1.5, c * .36); lctx.fillRect(x + m - s / 2, y + m - s / 2, s, s); continue; }
+    if (food && c >= 6) { lctx.fillStyle = col.S; lctx.globalAlpha = .35; lctx.fillRect(x + 1, y + 1, c - 2, c - 2); lctx.globalAlpha = 1; }
+    lctx.fillStyle = P.colourBy === 'genome' ? geneCol[argmax(o.att)] : col[o.s];
+    const vit = Math.min(1, Math.max(.35, o.e / 30)); lctx.globalAlpha = vit;
+    if (o.s === 'F') { lctx.beginPath(); lctx.arc(x + m, y + m, Math.max(1.4, c * .4), 0, Math.PI * 2); lctx.fill(); }
+    else { const r = Math.max(1.8, c * .5); lctx.beginPath(); lctx.moveTo(x + m, y + m - r); lctx.lineTo(x + m + r, y + m); lctx.lineTo(x + m, y + m + r); lctx.lineTo(x + m - r, y + m); lctx.closePath(); lctx.fill(); }
+    lctx.globalAlpha = 1;
+    if (n > 2 && c >= 9) { lctx.fillStyle = css('--screen'); lctx.font = `600 ${Math.floor(c * .5)}px ${css('--f-mono')}`; lctx.textAlign = 'center'; lctx.textBaseline = 'middle'; lctx.fillText(Math.min(n, 9), x + m, y + m + .5); }
+  }
+  if (selected) { lctx.strokeStyle = '#ffffff'; lctx.lineWidth = 2; lctx.strokeRect(selected.x * c + 1, selected.y * c + 1, c - 2, c - 2); }
+}
+
+function prepChart(cv) {
+  if (!cv.dataset.h) cv.dataset.h = cv.getAttribute('height');
+  const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = +cv.dataset.h;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); cv.style.height = h + 'px'; }
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+  return { ctx, w, h };
+}
+function niceMax(v) { if (v <= 10) return 10; const p = Math.pow(10, Math.floor(Math.log10(v))); for (const m of [1, 1.2, 1.6, 2, 2.4, 3, 4, 5, 6, 8, 10]) if (m * p >= v) return m * p; return v; }
+
+function drawPop() {
+  const { ctx, w, h } = prepChart($('popChart'));
+  const L = 44, R = 10, T = 8, B = 22, pw = w - L - R, ph = h - T - B;
+  const data = hist.slice(-600), span = Math.max(60, data.length), t0 = data[0].t;
+  let mx = 0; for (const d of data) mx = Math.max(mx, d.S, d.F, d.P); mx = niceMax(mx);
+  const mono = css('--f-mono'), muted = css('--muted'), line = css('--line');
+  ctx.font = `11px ${mono}`; ctx.fillStyle = muted; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  ctx.strokeStyle = line; ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) { const v = mx * i / 4, y = T + ph - ph * i / 4; ctx.beginPath(); ctx.moveTo(L, Math.round(y) + .5); ctx.lineTo(L + pw, Math.round(y) + .5); ctx.stroke(); ctx.fillText(Math.round(v), L - 6, y); }
+  const xs = t => L + pw * (t - t0) / Math.max(1, span - 1);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for (let i = 0; i <= 4; i++) { const tt = t0 + Math.round(i * (span - 1) / 4); ctx.fillText(tt, Math.min(L + pw - 12, Math.max(L + 10, xs(tt))), T + ph + 6); }
+  for (const [k, cvar] of [['S', '--food'], ['F', '--forager'], ['P', '--pred']]) {
+    const c = css(cvar);
+    ctx.beginPath(); data.forEach((d, i) => { const x = xs(d.t), y = T + ph - ph * d[k] / mx; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.strokeStyle = c; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
+    const d = data[data.length - 1]; ctx.fillStyle = c; ctx.beginPath(); ctx.arc(xs(d.t), T + ph - ph * d[k] / mx, 3.5, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+function drawGenome() {
+  const { ctx, w, h } = prepChart($('genChart'));
+  const cols = [css('--empty'), css('--food'), css('--forager'), css('--pred')];
+  const mono = css('--f-mono'), muted = css('--muted'), ink = css('--ink');
+  const L = 70, R = 8, laneH = (h - 26) / 2, data = hist.slice(-600);
+  const lanes = [['F', 'Foragers'], ['P', 'Predators']];
+  lanes.forEach(([s, name], li) => {
+    const y0 = li * (laneH + 10), pw = w - L - R, n = data.length;
+    ctx.font = `600 12px ${css('--f-body')}`; ctx.fillStyle = ink; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText(name, 0, y0 + 2);
+    const cur = data[n - 1];
+    ctx.font = `11px ${mono}`; ctx.fillStyle = muted;
+    ctx.fillText(cur[s] ? `n=${cur[s]}` : 'extinct', 0, y0 + 18);
+    const lab = ['∅', 'S', 'F', 'P'];
+    if (cur[s]) cur.att[s].forEach((v, i) => { ctx.fillStyle = cols[i]; ctx.fillRect(0, y0 + 36 + i * 13, 7, 7); ctx.fillStyle = muted; ctx.fillText(`${lab[i]} ${v.toFixed(2)}`, 11, y0 + 33 + i * 13); });
+    // stacked area over time
+    let bottoms = new Array(n).fill(0);
+    for (let g = 0; g < 4; g++) {
+      ctx.beginPath(); let started = false; const tops = [];
+      for (let i = 0; i < n; i++) {
+        const d = data[i]; if (!d[s]) { tops.push(null); continue; }
+        const top = bottoms[i] + d.att[s][g]; tops.push(top);
+      }
+      for (let i = 0; i < n; i++) { if (tops[i] == null) continue; const x = L + pw * i / Math.max(1, n - 1), y = y0 + laneH * (1 - tops[i]); started ? ctx.lineTo(x, y) : (ctx.moveTo(x, y), started = true); }
+      for (let i = n - 1; i >= 0; i--) { if (tops[i] == null) continue; const x = L + pw * i / Math.max(1, n - 1), y = y0 + laneH * (1 - bottoms[i]); ctx.lineTo(x, y); }
+      if (started) { ctx.closePath(); ctx.fillStyle = cols[g]; ctx.globalAlpha = .85; ctx.fill(); ctx.globalAlpha = 1; }
+      bottoms = bottoms.map((b, i) => tops[i] == null ? b : tops[i]);
+    }
+    ctx.strokeStyle = css('--line'); ctx.strokeRect(L + .5, y0 + .5, pw - 1, laneH - 1);
+  });
+  ctx.font = `11px ${mono}`; ctx.fillStyle = muted; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+  ctx.fillText(`t ${data[0].t} → ${data[data.length - 1].t}`, w - R, h);
+}
+
+function drawChips() {
+  const c = hist[hist.length - 1];
+  $('chips').innerHTML = [['S', 'food'], ['F', 'foragers'], ['P', 'predators']].map(([k, n]) =>
+    `<span class="chip ${c[k] ? '' : 'dead'}"><i class="sw ${k}"></i>${c[k]} ${n}</span>`).join('');
+  $('tOut').textContent = c.t;
+}
+function drawPhase() {
+  const { ctx, w, h } = prepChart($('phaseChart'));
+  const L = 46, R = 12, T = 10, B = 34, pw = w - L - R, ph = h - T - B;
+  const data = hist.slice(-600), n = data.length;
+  let mF = 0, mP = 0; for (const d of data) { mF = Math.max(mF, d.F); mP = Math.max(mP, d.P); }
+  mF = niceMax(mF); mP = niceMax(mP);
+  const mono = css('--f-mono'), muted = css('--muted'), line = css('--line');
+  const xs = v => L + pw * v / mF, ys = v => T + ph - ph * v / mP;
+  ctx.font = `11px ${mono}`; ctx.fillStyle = muted; ctx.strokeStyle = line; ctx.lineWidth = 1;
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (let i = 0; i <= 4; i++) { const v = mP * i / 4, y = Math.round(ys(v)) + .5; ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(L + pw, y); ctx.stroke(); ctx.fillText(Math.round(v), L - 6, y); }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for (let i = 0; i <= 4; i++) { const v = mF * i / 4, x = Math.round(xs(v)) + .5; ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, T + ph); ctx.stroke(); ctx.fillText(Math.round(v), Math.min(L + pw - 10, x), T + ph + 5); }
+  ctx.fillStyle = css('--forager'); ctx.fillText('foragers →', L + pw / 2, T + ph + 20);
+  ctx.save(); ctx.translate(11, T + ph / 2); ctx.rotate(-Math.PI / 2); ctx.fillStyle = css('--pred'); ctx.textBaseline = 'middle'; ctx.fillText('predators →', 0, 0); ctx.restore();
+  const acc = css('--accent');
+  ctx.strokeStyle = acc; ctx.lineWidth = 1.8; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  for (let i = 1; i < n; i++) {
+    ctx.globalAlpha = 0.08 + 0.92 * (i / (n - 1));
+    ctx.beginPath(); ctx.moveTo(xs(data[i - 1].F), ys(data[i - 1].P)); ctx.lineTo(xs(data[i].F), ys(data[i].P)); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  const d0 = data[0], d = data[n - 1];
+  ctx.fillStyle = muted; ctx.beginPath(); ctx.arc(xs(d0.F), ys(d0.P), 3, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = acc; ctx.beginPath(); ctx.arc(xs(d.F), ys(d.P), 5, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = css('--panel'); ctx.lineWidth = 2; ctx.stroke();
+  ctx.font = `11px ${mono}`; ctx.fillStyle = css('--ink'); ctx.textAlign = xs(d.F) > L + pw - 90 ? 'right' : 'left'; ctx.textBaseline = 'bottom';
+  ctx.fillText(`t ${d.t}: ${d.F}, ${d.P}`, xs(d.F) + (ctx.textAlign === 'right' ? -8 : 8), ys(d.P) - 4);
+}
+function drawScatter() {
+  const { ctx, w, h } = prepChart($('scatter'));
+  const s = $('scSpecies').value, gx = +$('scX').value, gy = +$('scY').value;
+  const names = ['empty cell', 'food', 'foragers', 'predators'];
+  const mono = css('--f-mono'), muted = css('--muted'), line = css('--line'), ink = css('--ink');
+  const Lm = 44, B = 36, T = 8, size = Math.max(60, Math.min(w - Lm - 12, h - B - T)), L = Lm + (w - Lm - 12 - size) / 2;
+  const xs = v => L + size * v, ys = v => T + size - size * v;
+  ctx.fillStyle = line; ctx.globalAlpha = 0.45; ctx.beginPath(); ctx.moveTo(xs(0), ys(0)); ctx.lineTo(xs(1), ys(0)); ctx.lineTo(xs(0), ys(1)); ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+  ctx.strokeStyle = line; ctx.lineWidth = 1; ctx.font = `11px ${mono}`; ctx.fillStyle = muted;
+  for (let i = 0; i <= 4; i++) {
+    const v = i / 4, x = Math.round(xs(v)) + .5, y = Math.round(ys(v)) + .5;
+    ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, T + size); ctx.moveTo(L, y); ctx.lineTo(L + size, y); ctx.stroke();
+    if (i % 2 === 0) { ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(v.toFixed(1), x, T + size + 4); ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillText(v.toFixed(1), L - 6, y); }
+  }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = ink; ctx.fillText(`attraction to ${names[gx]} →`, L + size / 2, T + size + 20);
+  ctx.save(); ctx.translate(10, T + size / 2); ctx.rotate(-Math.PI / 2); ctx.textBaseline = 'middle'; ctx.fillText(`attraction to ${names[gy]} →`, 0, 0); ctx.restore();
+  const pts = sim.orgs.filter(o => o.s === s), c = css(s === 'F' ? '--forager' : '--pred');
+  if (!pts.length) { ctx.fillStyle = muted; ctx.font = `13px ${css('--f-body')}`; ctx.textBaseline = 'middle'; ctx.fillText(s === 'F' ? 'Foragers are extinct' : 'Predators are extinct', L + size / 2, T + size / 2); return; }
+  const stride = Math.max(1, Math.ceil(pts.length / 2500));
+  ctx.fillStyle = c; ctx.globalAlpha = 0.5;
+  for (let i = 0; i < pts.length; i += stride) { const o = pts[i]; ctx.beginPath(); ctx.arc(xs(o.att[gx]), ys(o.att[gy]), 2.2, 0, Math.PI * 2); ctx.fill(); }
+  ctx.globalAlpha = 1;
+  let mx = 0, my = 0; for (const o of pts) { mx += o.att[gx]; my += o.att[gy]; } mx /= pts.length; my /= pts.length;
+  ctx.strokeStyle = ink; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(xs(mx), ys(my), 7, 0, Math.PI * 2); ctx.stroke();
+  ctx.font = `11px ${mono}`; ctx.fillStyle = ink; ctx.textAlign = 'right'; ctx.textBaseline = 'top'; ctx.fillText(`n=${pts.length}  mean (${mx.toFixed(2)}, ${my.toFixed(2)})`, L + size - 4, T + 4);
+}
+$('scSpecies').onchange = e => { const f = e.target.value === 'F'; $('scX').value = f ? 1 : 2; $('scY').value = 3; drawScatter(); };
+$('scX').onchange = drawScatter; $('scY').onchange = drawScatter;
+$('moveMode').onchange = e => { P.moveMode = e.target.value; };
+$('colourBy').onchange = e => { P.colourBy = e.target.value; $('geneLegend').hidden = P.colourBy !== 'genome'; drawLattice(); };
+function drawAll() { drawLattice(); drawPop(); drawGenome(); drawPhase(); drawScatter(); drawChips(); }
+
+// ---------- inspector ----------
+lat.addEventListener('click', e => {
+  const r = lat.getBoundingClientRect();
+  selected = { x: Math.floor((e.clientX - r.left) / cell), y: Math.floor((e.clientY - r.top) / cell) };
+  renderInspect(); drawLattice();
+});
+function renderInspect() {
+  const el = $('inspect');
+  if (!selected || !sim) { el.innerHTML = '<div class="empty-state">No cell selected yet.</div>'; return; }
+  const here = sim.orgs.filter(o => o.x === selected.x && o.y === selected.y);
+  const name = { S: 'Sustenance', F: 'Forager', P: 'Predator' };
+  let html = `<div>cell (${selected.x}, ${selected.y}) · ${here.length ? here.length + ' organism' + (here.length > 1 ? 's' : '') : 'empty'}</div>`;
+  const cols = ['var(--empty)', 'var(--food)', 'var(--forager)', 'var(--pred)'];
+  for (const o of here.slice(0, 6)) {
+    html += `<div class="org"><i class="sw ${o.s}"></i><span>${name[o.s]}${o.s !== 'S' ? ` · energy ${o.e} · age ${o.age} · gen ${o.gen} · ate ${o.eaten}` : ''}</span>`;
+    if (o.att) html += `<span></span><div class="gbar" title="[blank, food, forager, predator] = [${o.att.map(v => v.toFixed(3)).join(', ')}]">${o.att.map((v, i) => `<i style="width:${v * 100}%;background:${cols[i]}"></i>`).join('')}</div>`;
+    html += '</div>';
+  }
+  if (here.length > 6) html += `<div class="empty-state">and ${here.length - 6} more</div>`;
+  el.innerHTML = html;
+}
+
+// ---------- CSV ----------
+$('copyCsv').onclick = () => {
+  const csv = 'Timestep,Food,Foragers,Predators\n' + hist.map(d => `${d.t},${d.S},${d.F},${d.P}`).join('\n');
+  const fb = () => { const ta = $('csvFallback'); ta.hidden = false; ta.value = csv; ta.select(); $('toast').textContent = 'Clipboard unavailable here. Select the text below and copy it.'; };
+  try { navigator.clipboard.writeText(csv).then(() => { $('toast').textContent = `Copied ${hist.length} rows.`; }, fb); } catch (e) { fb(); }
+};
+
+window.addEventListener('resize', () => { sizeLattice(); drawAll(); });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawAll);
+new MutationObserver(drawAll).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+syncUI(); reset(); requestAnimationFrame(loop);
+</script>
+</body>
+</html>
